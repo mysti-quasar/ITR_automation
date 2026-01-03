@@ -1,0 +1,123 @@
+# tax_rules.py
+"""
+Indian Income Tax Rules Implementation for FY 2024-25 (AY 2025-26).
+Compliant with Union Budget July 2024.
+"""
+
+def calculate_tax(
+    gross_income: float, 
+    age: int = 30,
+    investments_80c: float = 0, 
+    medical_80d: float = 0, 
+    housing_loan_interest: float = 0, 
+    nps_80ccd_1b: float = 0,          
+    savings_interest: float = 0,      
+    regime: str = "new"
+):
+    """
+    Calculates final tax liability including Surcharge and Cess.
+    """
+    tax = 0
+    taxable_income = 0
+    
+    # --- NEW REGIME (u/s 115BAC) - FY 2024-25 ---
+    if regime == "new":
+        # Standard Deduction increased to ₹75,000 (Budget 2024)
+        std_deduction = 75000
+        
+        # New Regime allows very few deductions (Only Std Ded & NPS Employer)
+        taxable_income = max(0, gross_income - std_deduction)
+        
+        # New Tax Slabs (Budget 2024)
+        slab_income = taxable_income
+        
+        if slab_income <= 300000:
+            tax = 0
+        elif slab_income <= 700000:
+            tax = (slab_income - 300000) * 0.05
+        elif slab_income <= 1000000:
+            tax = 20000 + (slab_income - 700000) * 0.10
+        elif slab_income <= 1200000:
+            tax = 20000 + 30000 + (slab_income - 1000000) * 0.15
+        elif slab_income <= 1500000:
+            tax = 20000 + 30000 + 30000 + (slab_income - 1200000) * 0.20
+        else:
+            tax = 20000 + 30000 + 30000 + 60000 + (slab_income - 1500000) * 0.30
+
+        # Rebate u/s 87A (New Regime) - Tax NIL if income <= 7L
+        if taxable_income <= 700000:
+            tax = 0
+        else:
+            # Marginal Relief Logic (Simplified)
+            if taxable_income <= 727000:
+                tax = min(tax, taxable_income - 700000)
+
+    # --- OLD REGIME ---
+    elif regime == "old":
+        std_deduction = 50000
+        
+        # Deductions
+        deduction_80c = min(investments_80c, 150000)
+        deduction_80d = medical_80d
+        deduction_nps = min(nps_80ccd_1b, 50000)
+        deduction_home_loan = min(housing_loan_interest, 200000)
+        limit_savings = 50000 if age >= 60 else 10000
+        deduction_savings = min(savings_interest, limit_savings)
+        
+        total_deductions = (std_deduction + deduction_80c + deduction_80d + 
+                            deduction_nps + deduction_home_loan + deduction_savings)
+                            
+        taxable_income = max(0, gross_income - total_deductions)
+        
+        # Old Regime Slabs based on Age
+        basic_exemption = 250000
+        if age >= 80: basic_exemption = 500000
+        elif age >= 60: basic_exemption = 300000
+            
+        slab_income = taxable_income
+        
+        if slab_income <= basic_exemption:
+            tax = 0
+        elif slab_income <= 500000:
+            tax = (slab_income - basic_exemption) * 0.05
+        elif slab_income <= 1000000:
+            tax = (500000 - basic_exemption) * 0.05 + (slab_income - 500000) * 0.20
+        else:
+            tax = (500000 - basic_exemption) * 0.05 + 100000 + (slab_income - 1000000) * 0.30
+
+        # Rebate u/s 87A (Old Regime) - Tax NIL if income <= 5L
+        if taxable_income <= 500000:
+            tax = 0
+
+    # --- SURCHARGE (Income > 50L) ---
+    surcharge_rate = 0
+    if taxable_income > 5000000:
+        if taxable_income <= 10000000: surcharge_rate = 0.10
+        elif taxable_income <= 20000000: surcharge_rate = 0.15
+        else: surcharge_rate = 0.25 # Capped for simplicity
+    
+    surcharge = tax * surcharge_rate
+    total_tax = tax + surcharge
+
+    # --- CESS (4%) ---
+    cess = total_tax * 0.04
+    
+    return round(total_tax + cess)
+
+def suggest_savings(data):
+    suggestions = []
+    income = data.get('total_income', 0)
+    inv_80c = data.get('investments_80c', 0)
+    med_80d = data.get('medical_80d', 0)
+    
+    if inv_80c < 150000:
+        gap = 150000 - inv_80c
+        suggestions.append(f"📌 **Old Regime:** Invest ₹{gap:,} more in ELSS/PPF to max out 80C.")
+
+    if med_80d == 0:
+        suggestions.append("📌 **Health Insurance:** No premium found. Buying insurance saves up to ₹25k (Sec 80D).")
+
+    if income > 1500000:
+        suggestions.append("💡 **Insight:** High Income (>15L). **New Regime** is usually better unless you have deductions > ₹3.75 Lakhs.")
+            
+    return suggestions
