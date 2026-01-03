@@ -2,9 +2,9 @@ fastapi
 uvicorn
 python-multipart
 python-dotenv
-pdfplumber
-pandas
+pypdf
 google-generativeai
-langchain-core
+langchain
 langchain-google-genai
-openpyxl
+langchain-core
+pydantic
