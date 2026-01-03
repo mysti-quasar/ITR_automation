@@ -373,14 +373,45 @@
             } catch(e) { box.innerHTML += `<div class="text-left text-red-500">Error</div>`; }
         }
 
-        async function downloadExcel() {
-            window.location.href = API_URL+"/download-report";
-        }
+         async function downloadExcel() {
+            const btn = document.querySelector('button[onclick="downloadExcel()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Downloading...`;
+            btn.disabled = true;
 
-        function addBotMessage(text) {
-            const box = document.getElementById('chat-box');
-            box.innerHTML += `<div class="flex gap-3"><div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 border border-indigo-200"><i class="fa-solid fa-robot text-indigo-600 text-xs"></i></div><div class="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-gray-100 text-gray-700">${text}</div></div>`;
-            box.scrollTop = box.scrollHeight;
+            try {
+                // 1. Backend se file maangein
+                const response = await fetch(API_URL + "/download-report");
+                
+                // 2. Agar koi data nahi hai to error dikhayein
+                if (response.status === 400) {
+                    alert("Please upload a statement or add entries first!");
+                    return;
+                }
+
+                // 3. File (Blob) create karein
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                
+                // 4. Temporary Link banakar click karein (CSV download ke liye)
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = "TaxAI_Report.csv";  // <--- Ye rahi wo line (.csv extension)
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+            } catch (e) {
+                console.error(e);
+                alert("Error downloading file.");
+            } finally {
+                // Button wapas normal karein
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
     </script>
 </body>
