@@ -1,4 +1,4 @@
-import pandas as pd
+import csv
 import io
 from fastapi.responses import StreamingResponse
 import os
@@ -192,19 +192,19 @@ async def analyze_combined(
         print(f"Error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# --- EXCEL DOWNLOAD ENDPOINT ---
+# main.py ke end mein download_report function replace karein
+
 @app.get("/download-report")
 async def download_report():
     """
-    Generates an Excel report with Summary, Tax Calculation, and Transactions.
+    Generates a CSV report (Lightweight alternative to Excel).
     """
     if "analysis" not in user_data_store or user_data_store["analysis"] == "No PDF uploaded yet.":
-        return JSONResponse(status_code=400, content={"error": "No data available. Please upload a statement first."})
+        return JSONResponse(status_code=400, content={"error": "No data available."})
 
     data = user_data_store["analysis"]
     
-    # 1. Prepare Summary Data
-    # Hum calculations dobara kar lete hain taki latest values milen
+    # Calculate Data
     income = float(data.get('total_income', 0))
     inv_80c = float(data.get('investments_80c', 0))
     med_80d = float(data.get('medical_80d', 0))
@@ -213,61 +213,55 @@ async def download_report():
     tax_new = calculate_tax(income, regime="new")
     tax_old = calculate_tax(income, investments_80c=inv_80c, medical_80d=med_80d, regime="old")
     
-    suggestions = suggest_savings(data)
-    recommendation = "New Regime" if tax_new < tax_old else "Old Regime"
-
-    # Create Summary DataFrame
-    summary_dict = {
-        "Metric": [
-            "Total Income (Credits)", 
-            "Total Expenses (Debits)", 
-            "Investments (80C Detected)", 
-            "Health Insurance (80D Detected)",
-            "---",
-            "Tax Payable (New Regime)",
-            "Tax Payable (Old Regime)",
-            "Recommended Regime",
-            "Potential Savings"
-        ],
-        "Amount (₹)": [
-            income, 
-            expenses, 
-            inv_80c, 
-            med_80d,
-            "",
-            tax_new,
-            tax_old,
-            recommendation,
-            abs(tax_new - tax_old)
-        ]
-    }
-    df_summary = pd.DataFrame(summary_dict)
-
-    # 2. Prepare Suggestions Data
-    df_suggestions = pd.DataFrame({"CA Suggestions / Insights": suggestions})
-
-    # 3. Prepare Transactions Data (Raw List)
-    # Agar logic.py se 'raw_transactions' aa raha hai to use karenge
-    raw_txns = data.get("raw_transactions", [])
-    if raw_txns:
-        df_transactions = pd.DataFrame(raw_txns)
-    else:
-        df_transactions = pd.DataFrame([{"Message": "No detailed transaction list available."}])
-
-    # 4. Create Excel in Memory (No file saved on disk)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_summary.to_excel(writer, sheet_name='Tax Summary', index=False)
-        df_suggestions.to_excel(writer, sheet_name='CA Advice', index=False)
-        df_transactions.to_excel(writer, sheet_name='Detailed Transactions', index=False)
+    rec = "New Regime" if tax_new < tax_old else "Old Regime"
     
-    output.seek(0)
+    # --- CSV GENERATION ---
+    output = io.StringIO()
+    writer = csv.writer(output)
 
-    # 5. Return File Response
+    # Section 1: Summary
+    writer.writerow(["--- TAX SUMMARY REPORT ---"])
+    writer.writerow(["Total Income", income])
+    writer.writerow(["Total Expenses", expenses])
+    writer.writerow(["Investments (80C)", inv_80c])
+    writer.writerow(["Medical (80D)", med_80d])
+    writer.writerow([]) # Empty Line
+    writer.writerow(["--- TAX CALCULATION ---"])
+    writer.writerow(["New Regime Tax", tax_new])
+    writer.writerow(["Old Regime Tax", tax_old])
+    writer.writerow(["Recommendation", rec])
+    writer.writerow([])
+
+    # Section 2: Suggestions
+    writer.writerow(["--- CA SUGGESTIONS ---"])
+    suggestions = suggest_savings(data)
+    for s in suggestions:
+        writer.writerow([s])
+    writer.writerow([])
+
+    # Section 3: Transactions
+    writer.writerow(["--- DETAILED TRANSACTIONS ---"])
+    writer.writerow(["Description", "Category", "Amount", "Type"])
+    
+    raw_txns = data.get("raw_transactions", [])
+    for t in raw_txns:
+        writer.writerow([
+            t.get("description", ""),
+            t.get("category", ""),
+            t.get("amount", 0),
+            t.get("type", "")
+        ])
+
+    # Return CSV File
+    output.seek(0)
     headers = {
-        'Content-Disposition': 'attachment; filename="TaxAI_Report.xlsx"'
+        'Content-Disposition': 'attachment; filename="TaxAI_Report.csv"'
     }
-    return StreamingResponse(output, headers=headers, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    return StreamingResponse(
+        iter([output.getvalue()]), 
+        headers=headers, 
+        media_type='text/csv'
+    )
 
 
 
